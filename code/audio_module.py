@@ -104,6 +104,8 @@ class AudioProcessor:
 
         # 선택된 TTS 엔진을 동적으로 로드하고 구성
         if engine == "coqui":
+            # 기존 Coqui 프로세스 정리
+            self._cleanup_existing_coqui_processes()
             ensure_lasinya_models(models_root="models", model_name="Lasinya")
             self.engine = CoquiEngine(
                 specific_model="Lasinya",
@@ -230,6 +232,9 @@ class AudioProcessor:
 
         # 필요 시 외부에서 설정할 콜백
         self.on_first_audio_chunk_synthesize: Optional[Callable[[], None]] = None
+        
+        # 정리 상태 플래그
+        self._is_shutting_down = False
 
     def set_voice(self, voice_path: str):
         """
@@ -666,3 +671,138 @@ class AudioProcessor:
 
         logger.info(f"👄✅ {generation_string} 최종 응답 합성이 완료되었습니다.")
         return True # 성공적인 완료 표시
+
+    def cleanup(self):
+        """
+        AudioProcessor와 관련된 리소스를 정리합니다.
+        클라이언트 연결 해제 시 Coqui 엔진의 worker thread 오류를 방지합니다.
+        """
+        if self._is_shutting_down:
+            logger.debug("👄🔄 AudioProcessor cleanup이 이미 진행 중입니다.")
+            return
+            
+        self._is_shutting_down = True
+        logger.info("👄🧹 AudioProcessor 정리 시작...")
+        
+        try:
+            # 현재 진행 중인 스트림 중지
+            if hasattr(self, 'stream') and self.stream:
+                if self.stream.is_playing():
+                    logger.info("👄🛑 진행 중인 오디오 스트림 중지...")
+                    self.stream.stop()
+                    
+                    # 스트림 완료 대기 (타임아웃 포함)
+                    if hasattr(self, 'finished_event'):
+                        self.finished_event.wait(timeout=2.0)
+                
+                # 스트림 종료
+                if hasattr(self.stream, 'shutdown'):
+                    self.stream.shutdown()
+                    
+            # 엔진 정리
+            if hasattr(self, 'engine') and self.engine:
+                if self.engine_name == "coqui":
+                    logger.info("👄🧹 Coqui 엔진 정리 중...")
+                    # Coqui 엔진의 worker 프로세스 종료
+                    if hasattr(self.engine, 'shutdown'):
+                        self.engine.shutdown()
+                    elif hasattr(self.engine, 'stop'):
+                        self.engine.stop()
+                        
+                elif self.engine_name == "elabs":
+                    logger.info("👄🧹 ElevenLabs 엔진 정리 중...")
+                    if hasattr(self.engine, 'shutdown'):
+                        self.engine.shutdown()
+                        
+                elif self.engine_name == "orpheus":
+                    logger.info("👄🧹 Orpheus 엔진 정리 중...")
+                    if hasattr(self.engine, 'shutdown'):
+                        self.engine.shutdown()
+                        
+                elif self.engine_name == "kokoro":
+                    logger.info("👄🧹 Kokoro 엔진 정리 중...")
+                    if hasattr(self.engine, 'shutdown'):
+                        self.engine.shutdown()
+                        
+            # 이벤트 정리
+            if hasattr(self, 'stop_event'):
+                self.stop_event.set()
+                
+            # 오디오 큐 정리
+            if hasattr(self, 'audio_chunks'):
+                # 큐의 모든 항목 제거
+                while not self.audio_chunks.empty():
+                    try:
+                        self.audio_chunks.get_nowait()
+                    except:
+                        break
+                        
+            logger.info("👄✅ AudioProcessor 정리 완료")
+            
+        except Exception as e:
+            logger.error(f"👄💥 AudioProcessor 정리 중 오류 발생: {e}", exc_info=True)
+        finally:
+            self._is_shutting_down = False
+            
+    def _cleanup_existing_coqui_processes(self):
+        """
+        새 Coqui 엔진 생성 전 기존 Coqui worker 프로세스들을 정리합니다.
+        """
+        try:
+            import psutil
+            import time
+            import os
+            
+            logger.info("👄🧹 기존 Coqui worker 프로세스 정리 중...")
+            
+            # 현재 프로세스 PID
+            current_pid = os.getpid()
+            
+            killed_count = 0
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+                try:
+                    # 자신은 제외
+                    if proc.info['pid'] == current_pid:
+                        continue
+                        
+                    cmdline = proc.info['cmdline']
+                    if cmdline and len(cmdline) > 1:
+                        cmdline_str = ' '.join(cmdline)
+                        # Coqui worker 프로세스 패턴 확인 (더 구체적으로)
+                        if ('python' in cmdline[0] and 
+                            'multiprocessing.spawn' in cmdline_str and
+                            'spawn_main' in cmdline_str and
+                            'tracker_fd' in cmdline_str):
+                            
+                            logger.info(f"👄🧹 기존 Coqui worker 프로세스 종료: PID {proc.info['pid']}")
+                            proc.terminate()
+                            killed_count += 1
+                            
+                            # 정상 종료 대기
+                            try:
+                                proc.wait(timeout=1)
+                            except psutil.TimeoutExpired:
+                                logger.warning(f"👄🧹 강제 종료: PID {proc.info['pid']}")
+                                try:
+                                    proc.kill()
+                                except psutil.NoSuchProcess:
+                                    pass  # 이미 종료된 경우
+                                
+                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                    continue
+                except Exception as e:
+                    logger.debug(f"👄🧹 프로세스 {proc.info.get('pid', 'unknown')} 처리 중 오류: {e}")
+                    continue
+                    
+            if killed_count > 0:
+                logger.info(f"👄🧹 {killed_count}개의 기존 Coqui worker 프로세스를 정리했습니다.")
+                # 프로세스 정리 후 잠시 대기
+                time.sleep(0.5)
+            else:
+                logger.debug("👄🧹 정리할 기존 Coqui worker 프로세스가 없습니다.")
+                
+        except ImportError:
+            logger.debug("👄🧹 psutil을 사용할 수 없어 기존 프로세스 정리를 건너뜁니다.")
+        except Exception as e:
+            logger.warning(f"👄🧹 기존 프로세스 정리 중 오류 발생: {e}")
+            # 오류가 발생해도 Coqui 엔진 초기화는 계속 진행

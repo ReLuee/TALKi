@@ -1031,3 +1031,11 @@ You are playing the AI2_tutor role. Key functions:
              else:
                   logger.info(f"🗣️🔌👍 {name} 스레드가 이미 완료되었습니다.")
         logger.info("🗣️🔌✅ 종료 완료.")
+        
+        # AudioProcessor 정리
+        if hasattr(self, 'audio_processor') and self.audio_processor:
+            try:
+                logger.info("🗣️🧹 AudioProcessor 정리 중...")
+                self.audio_processor.cleanup()
+            except Exception as e:
+                logger.error(f"🗣️💥 AudioProcessor 정리 중 오류: {e}", exc_info=True)

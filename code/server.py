@@ -199,9 +199,16 @@ def parse_json_message(text: str) -> dict:
         파싱된 JSON을 나타내는 딕셔너리, 또는 오류 시 빈 딕셔너리.
     """
     try:
-        return json.loads(text)
+        if not text or text.strip() == "":
+            logger.warning("🖥️⚠️ 빈 텍스트 메시지를 무시합니다.")
+            return {}
+        result = json.loads(text)
+        return result if result is not None else {}
     except json.JSONDecodeError:
         logger.warning("🖥️⚠️ 잘못된 JSON 형식의 클라이언트 메시지를 무시합니다.")
+        return {}
+    except Exception as e:
+        logger.warning(f"🖥️⚠️ JSON 파싱 중 예외 발생: {e}")
         return {}
 
 def format_timestamp_ns(timestamp_ns: int) -> str:
@@ -253,6 +260,11 @@ async def process_incoming_data(ws: WebSocket, app: FastAPI, incoming_chunks: as
     try:
         while True:
             msg = await ws.receive()
+            
+            # 연결이 끊긴 경우 루프 종료
+            if msg["type"] == "websocket.disconnect":
+                logger.info("🖥️🔌 WebSocket 연결 해제 메시지 수신")
+                break
             if "bytes" in msg and msg["bytes"]:
                 raw = msg["bytes"]
                 logger.debug(f"🖥️🔊 오디오 수신: {len(raw)} 바이트") # STT 진단 로그 1
@@ -296,6 +308,9 @@ async def process_incoming_data(ws: WebSocket, app: FastAPI, incoming_chunks: as
             elif "text" in msg and msg["text"]:
                 # 텍스트 기반 메시지: JSON 파싱
                 data = parse_json_message(msg["text"])
+                if not data:
+                    logger.warning("🖥️⚠️ 파싱된 데이터가 없습니다. 스킵합니다!")
+                    continue
                 msg_type = data.get("type")
                 logger.info(Colors.apply(f"🖥️📥 ←←클라이언트: {data}").orange)
 
@@ -911,7 +926,7 @@ class TranscriptionCallbacks:
             # 정확히 무엇을 리셋하고 무엇을 유지해야 하는지 주의 (tts_client_playing 등)
             # self.reset_state() # 너무 많이 지울 수 있음, 예를 들어 user_interrupted를 조기에
 
-    def send_final_assistant_answer(self, forced=False, speaker_role_override=None):
+    def send_final_assistant_answer(self, forced=False, speaker_role_override=None, custom_message=None):
         """
         최종 (또는 사용 가능한 최상의) 어시스턴트 답변을 클라이언트로 전송합니다.
 
@@ -923,10 +938,15 @@ class TranscriptionCallbacks:
             forced: True인 경우, 완전한 최종 답변이 없을 때 마지막 부분 답변을
                     전송하려고 시도합니다. 기본값은 False.
             speaker_role_override: AI-to-AI 대화와 같이 역할을 명시적으로 설정해야 할 때 사용됩니다.
+            custom_message: 사용자 정의 메시지 (연결 끊김 알림 등)
         """
         final_answer = ""
+        
+        # custom_message가 제공된 경우 우선 사용
+        if custom_message:
+            final_answer = custom_message
         # 전역 관리자 상태 접근
-        if self.app.state.SpeechPipelineManager.is_valid_gen():
+        elif self.app.state.SpeechPipelineManager.is_valid_gen():
             final_answer = self.app.state.SpeechPipelineManager.running_generation.quick_answer + self.app.state.SpeechPipelineManager.running_generation.final_answer
 
         if not final_answer: # 구성된 답변이 비어 있는지 확인
@@ -1052,6 +1072,14 @@ async def websocket_endpoint(ws: WebSocket):
         # 클라이언트 연결 상태 업데이트 (연결 끊김)
         app.state.SpeechPipelineManager.set_client_connection_status(False)
         
+        # AudioProcessor 정리 (Coqui 엔진 worker thread 오류 방지)
+        if hasattr(app.state.SpeechPipelineManager, 'audio_processor') and app.state.SpeechPipelineManager.audio_processor:
+            try:
+                logger.info("🖥️🧹 AudioProcessor 정리 중...")
+                app.state.SpeechPipelineManager.audio_processor.cleanup()
+            except Exception as e:
+                logger.error(f"🖥️💥 AudioProcessor 정리 중 오류: {e}", exc_info=True)
+        
         for task in tasks:
             if not task.done():
                 task.cancel()
@@ -1061,9 +1089,76 @@ async def websocket_endpoint(ws: WebSocket):
         logger.info("🖥️❌ 웹소켓 세션이 종료되었습니다.")
 
 # --------------------------------------------------------------------
+# 서버 시작 시 정리 함수
+# --------------------------------------------------------------------
+def cleanup_orphaned_processes():
+    """
+    서버 시작 시 남은 Coqui worker 프로세스들을 정리합니다.
+    이전 서버 세션에서 완전히 종료되지 않은 프로세스들을 제거합니다.
+    """
+    try:
+        import psutil
+        import os
+        
+        logger.info("🧹 남은 Coqui worker 프로세스 정리 중...")
+        
+        # 현재 프로세스 PID 가져오기 (자신을 종료하지 않기 위해)
+        current_pid = os.getpid()
+        
+        # multiprocessing.spawn으로 생성된 프로세스들 찾기
+        killed_count = 0
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+            try:
+                # 자신은 제외
+                if proc.info['pid'] == current_pid:
+                    continue
+                    
+                cmdline = proc.info['cmdline']
+                if cmdline and len(cmdline) > 1:
+                    cmdline_str = ' '.join(cmdline)
+                    # Coqui worker 프로세스 패턴 확인 (더 구체적으로)
+                    if ('python' in cmdline[0] and 
+                        'multiprocessing.spawn' in cmdline_str and
+                        'spawn_main' in cmdline_str and
+                        'tracker_fd' in cmdline_str):
+                        
+                        logger.info(f"🧹 남은 Coqui worker 프로세스 종료: PID {proc.info['pid']}")
+                        proc.terminate()
+                        killed_count += 1
+                        
+                        # 강제 종료가 필요한 경우
+                        try:
+                            proc.wait(timeout=2)
+                        except psutil.TimeoutExpired:
+                            logger.warning(f"🧹 강제 종료: PID {proc.info['pid']}")
+                            try:
+                                proc.kill()
+                            except psutil.NoSuchProcess:
+                                pass  # 이미 종료된 경우
+                            
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                continue
+            except Exception as e:
+                logger.debug(f"🧹 프로세스 {proc.info.get('pid', 'unknown')} 처리 중 오류: {e}")
+                continue
+                
+        if killed_count > 0:
+            logger.info(f"🧹 {killed_count}개의 남은 Coqui worker 프로세스를 정리했습니다.")
+        else:
+            logger.info("🧹 정리할 남은 Coqui worker 프로세스가 없습니다.")
+            
+    except ImportError:
+        logger.warning("🧹 psutil을 사용할 수 없어 프로세스 정리를 건너뜁니다.")
+    except Exception as e:
+        logger.error(f"🧹 프로세스 정리 중 오류 발생: {e}")
+        # 오류가 발생해도 서버 시작은 계속 진행
+
+# --------------------------------------------------------------------
 # 진입점
 # --------------------------------------------------------------------
 if __name__ == "__main__":
+    # 서버 시작 전 남은 프로세스 정리
+    cleanup_orphaned_processes()
 
     # SSL 없이 서버 실행
     if not USE_SSL:
