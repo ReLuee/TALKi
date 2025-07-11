@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Project TALKI</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:400,500,700&display=swap">
+  <style>
+    :root {
+      /* Modernized color palette */
+      --primary: #4a90e2;
+      --secondary: #f5f7fa;
+      --bubble-user: #4a90e2;
+      --bubble-user-text: #ffffff;
+      --bubble-assistant: #e9eef2;
+      --bubble-assistant-text: #2c3e50;
+      --bg: #f4f4f4; /* Original messages background */
+      --shadow: 0 4px 12px rgba(0,0,0,0.1);
+      --shadow-light: 0 2px 6px rgba(0,0,0,0.08);
+    }
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: 'Inter', Arial, sans-serif;
+      /* CONSTRAINT 1: Keep original background */
+      background: url("static/background.png") no-repeat center center fixed;
+      background-size: cover;
+      color: #222;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    #app {
+      flex: 1;
+      display: flex;
+      justify-content: center;
+      align-items: stretch;
+      min-height: 100vh;
+    }
+    .chat-container {
+      flex: 1;
+      /* CONSTRAINT 2: Keep original dimensions */
+      max-width: 480px;
+      width: 100%;
+      background: rgba(255, 255, 255, 0.9); /* Sleek transparency */
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      box-shadow: var(--shadow);
+      margin: 24px 0;
+      border-radius: 16px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+    }
+    .header {
+      background: var(--primary);
+      color: #fff;
+      padding: 18px 24px;
+      font-size: 1.25rem;
+      letter-spacing: 1px;
+      font-weight: 500;
+      border-top-left-radius: 16px;
+      border-top-right-radius: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .status {
+      font-size: 0.9rem;
+      color: #c0c0c0;
+      margin-left: auto;
+    }
+    .messages {
+      flex: 1;
+      padding: 20px 16px 16px 16px;
+      /* CONSTRAINT 2: Keep original scroll and background */
+      overflow-y: auto;
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .message-container {
+        display: flex;
+        flex-direction: column;
+    }
+    .message-container.user {
+        align-items: flex-end;
+    }
+    .message-container.assistant {
+        align-items: flex-start;
+    }
+    .speaker-name {
+        font-size: 0.8rem;
+        color: #666;
+        margin-bottom: 4px;
+        margin-left: 12px;
+        margin-right: 12px;
+    }
+    .bubble {
+      padding: 12px 18px;
+      border-radius: 20px;
+      max-width: 85%;
+      font-size: 1rem;
+      line-height: 1.6;
+      position: relative;
+      display: inline-block;
+      word-break: break-word;
+      box-shadow: var(--shadow-light);
+    }
+    .message-container.user .bubble {
+      background: var(--bubble-user);
+      color: var(--bubble-user-text);
+      border-bottom-right-radius: 6px;
+    }
+    .message-container.assistant .bubble {
+      background: var(--bubble-assistant);
+      color: var(--bubble-assistant-text);
+      border-bottom-left-radius: 6px;
+    }
+    /* CONSTRAINT 2: Typing bubble shows text, with new bubble style */
+    .bubble.typing {
+      background: #ebedef;
+      color: #444;
+      font-style: italic;
+      opacity: 0.9;
+      min-width: 60px;
+    }
+    .input-bar {
+      display: flex;
+      padding: 12px;
+      background: #fff;
+      border-top: 1px solid #e1e5ef;
+      align-items: center;
+      gap: 8px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      width: 42px;
+      height: 42px;
+      border: none;
+      border-radius: 50%; /* Circular buttons */
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+      cursor: pointer;
+      color: white;
+      transition: all 0.2s ease;
+      box-shadow: var(--shadow-light);
+    }
+    .btn:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 12px rgba(0,0,0,0.12);
+    }
+    .btn:active:not(:disabled) {
+      transform: translateY(0);
+      box-shadow: var(--shadow-light);
+    }
+    .btn:disabled {
+      background-color: #b0bec5;
+      cursor: not-allowed;
+    }
+    .start-btn { background-color: #43a047; }
+    .stop-btn { background-color: #e53935; }
+    .mic-btn { background-color: #4a90e2; }
+    .reset-btn { background-color: #1e88e5; }
+    .copy-btn { background-color: #546e7a; }
+    .ai-talk-btn { background-color: #f9a825; }
+    .ai-pause-btn { background-color: #8e44ad; }
+    
+    .speed-control {
+      flex: 1;
+      margin: 0 12px;
+      max-width: 200px;
+    }
+    #speedSlider {
+      width: 100%;
+      height: 5px;
+      background: #dbe2f1;
+      border-radius: 3px;
+      outline: none;
+      -webkit-appearance: none;
+      cursor: pointer;
+    }
+    #speedSlider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 18px;
+      height: 18px;
+      background: #fff;
+      border: 2px solid var(--primary);
+      border-radius: 50%;
+      cursor: pointer;
+      transition: transform 0.1s ease;
+    }
+    #speedSlider::-webkit-slider-thumb:hover {
+      transform: scale(1.1);
+    }
+    .speed-labels {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 4px;
+      font-size: 0.75rem;
+      color: #555;
+    }
+    .input-bar button {
+        padding: 0;
+        font-size: 1rem;
+        border-radius: 50%;
+        margin-left: 0;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div class="chat-container">
+      <div class="header">
+        <!-- Centered “AI” text within the circle -->
+        <svg height="24" width="24" viewBox="0 0 22 22" fill="#fff" style="margin-right:8px">
+          <circle cx="11" cy="11" r="12" fill="#222F3D" />
+          <text
+            x="50%"
+            y="50%"
+            fill="#fff"
+            text-anchor="middle"
+            alignment-baseline="middle"
+            font-size="12"
+            font-family="Inter"
+          >AI</text>
+        </svg>
+        TALKI
+        <span class="status" id="status"></span>
+      </div>
+      <div class="messages" id="messages"></div>
+      <div class="input-bar">
+
+        <div class="speed-control">
+          <input type="range" id="speedSlider" min="0" max="100" value="0">
+          <div class="speed-labels">
+            <span>Fast</span>
+            <span>Slow</span>
+          </div>
+        </div>
+
+        <br>
+
+        <button id="startBtn" title="Start voice chat" class="btn start-btn">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M8 5L8 19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path d="M8 5L18 12L8 19" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        
+        <button id="stopBtn" title="Stop voice chat" class="btn stop-btn">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="6" y="6" width="12" height="12" rx="1" stroke="currentColor" stroke-width="2"/>
+          </svg>
+        </button>
+
+        <!-- Mic Toggle Button -->
+        <button id="micToggleBtn" title="Mute microphone" class="btn mic-btn">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" stroke="currentColor" stroke-width="2"/>
+              <path d="M19 10v1a7 7 0 0 1-14 0v-1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              <line x1="12" y1="19" x2="12" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+        </button>
+        
+        <button id="clearBtn" title="Reset conversation" class="btn reset-btn">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C14.8273 3 17.35 4.30367 19 6.34267" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path d="M14.5 6.5L19.5 6.5L19.5 1.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button> 
+
+        <button id="copyBtn" title="Copy conversation" class="btn copy-btn">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+           <rect x="9" y="9" width="11" height="11" rx="1" stroke="currentColor" stroke-width="2"/>
+           <path d="M5 15H4C3.44772 15 3 14.5523 3 14V4C3 3.44772 3.44772 3 4 3H14C14.5523 3 15 3.44772 15 4V5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+         </svg>
+       </button>
+
+        <button id="aiTalkBtn" title="Start AI-to-AI conversation" class="btn ai-talk-btn">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M17 10L17 10C14.2386 10 12 12.2386 12 15V15C12 17.7614 14.2386 20 17 20V20C19.7614 20 22 17.7614 22 15V15C22 12.2386 19.7614 10 17 10Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M7 10L7 10C4.23858 10 2 12.2386 2 15V15C2 17.7614 4.23858 20 7 20V20C9.76142 20 12 17.7614 12 15V15C12 12.2386 9.76142 10 7 10Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M17 9V7C17 5.34315 15.6569 4 14 4H10C8.34315 4 7 5.34315 7 7V9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+
+        <button id="aiPauseBtn" title="Pause AI-to-AI conversation" class="btn ai-pause-btn">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M10 4H6V20H10V4Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M18 4H14V20H18V4Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+
+      </div>
+    </div>
+  </div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

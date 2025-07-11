@@ -1,0 +1,5 @@
+# Set default behavior for all text files to let Git decide (auto)
+* text=auto
+
+# Force Unix (LF) line endings for all shell scripts
+*.sh text eol=lf

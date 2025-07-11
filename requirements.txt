@@ -1,0 +1,23 @@
+# speech to text and text to speech
+realtimestt==0.3.104
+realtimetts[kokoro,coqui,orpheus,elevenlabs]==0.5.5
+transformers==4.47.0
+
+# webserver dependencies
+fastapi
+uvicorn
+
+# configuration
+python-dotenv
+
+# llm providers
+ollama
+openai
+
+# langchain
+langchain
+langchain-openai
+langchain-community
+faiss-cpu
+langsmith
+sentence-transformers
