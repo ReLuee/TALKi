@@ -62,8 +62,8 @@ let waitingForTTSComplete = false;
 let chatHistory = [];
 let typingUser = "";
 let typingAssistant = {
-    "AI1_friend": "",
-    "AI2_tutor": "",
+    "AI1_Mia": "",
+    "AI1_Leo": "",
     "assistant": "" // Fallback
 };
 
@@ -244,10 +244,10 @@ function renderMessages() {
         
         if (msg.role === 'user') {
             speakerName.textContent = 'You';
-        } else if (msg.role === 'AI1_friend') {
-            speakerName.textContent = 'AI1 (Friend)';
-        } else if (msg.role === 'AI2_tutor') {
-            speakerName.textContent = 'AI2 (Tutor)';
+        } else if (msg.role === 'AI1_Mia') {
+            speakerName.textContent = 'Mia';
+        } else if (msg.role === 'AI1_Leo') {
+            speakerName.textContent = 'Leo';
         } else {
             speakerName.textContent = 'Assistant';
         }
@@ -285,10 +285,10 @@ function renderMessages() {
 
             const speakerName = document.createElement("div");
             speakerName.className = "speaker-name";
-            if (role === 'AI1_friend') {
-                speakerName.textContent = 'AI1 (Friend)';
-            } else if (role === 'AI2_tutor') {
-                speakerName.textContent = 'AI2 (Tutor)';
+            if (role === 'AI1_Mia') {
+                speakerName.textContent = 'Mia';
+            } else if (role === 'AI1_Leo') {
+                speakerName.textContent = 'Leo';
             } else {
                 speakerName.textContent = 'Assistant';
             }

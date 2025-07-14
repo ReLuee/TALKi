@@ -42,7 +42,7 @@ def load_prompt_from_file(file_path: str, default_prompt: str) -> str:
 # 페르소나 및 오케스트레이터 프롬프트 로드
 persona_ai1 = load_prompt_from_file("persona_ai1.txt", "You are a friendly conversation partner.")
 persona_ai2 = load_prompt_from_file("persona_ai2.txt", "You are a helpful tutor who corrects mistakes.")
-orchestrator_prompt_text = load_prompt_from_file("orchestrator.txt", "You are an orchestrator. Decide who should speak next: AI1_friend or AI2_tutor.")
+orchestrator_prompt_text = load_prompt_from_file("orchestrator.txt", "You are an orchestrator. Decide who should speak next: AI1_Mia or AI2_Leo.")
 
 # ... (기존 orpheus_prompt_addon 코드 유지)
 USE_ORPHEUS_UNCENSORED = False
@@ -156,7 +156,7 @@ class SpeechPipelineManager:
         
         self.ai_to_ai_active = False
         self.ai_to_ai_paused = False
-        self.last_ai_speaker = "AI2_tutor" # AI1이 먼저 시작하도록 초기화
+        self.last_ai_speaker = "AI1_Leo" # AI1이 먼저 시작하도록 초기화
         self.last_ai_response = ""
         self.ai_to_ai_turn_count = 0  # AI-to-AI 대화 횟수 카운터
         self.client_connected = True  # 클라이언트 연결 상태
@@ -333,7 +333,7 @@ class SpeechPipelineManager:
                         time.sleep(AI_TURN_DELAY)
                     
                     # 마지막 AI 응답을 다음 입력으로 사용 (히스토리에서 가져옴)
-                    if self.history and self.history[-1]["role"] in ['AI1_friend', 'AI2_tutor']:
+                    if self.history and self.history[-1]["role"] in ['AI1_Mia', 'AI1_Leo']:
                         last_response = self.history[-1]["content"]
                         next_input = last_response.strip() if last_response and last_response.strip() else "Let's continue our conversation."
                     else:
@@ -398,7 +398,7 @@ You:"""
         
         # AI1 (Friend) Role Definition
         ai1_role_context = """**[SYSTEM: Role Definition]**
-You are playing the AI1_friend role. Key functions:
+You are playing the AI1_Mia role. Key functions:
 - Act as a friendly conversation partner
 - Engage in casual conversation, jokes, and personal opinions
 - Maintain natural conversation flow
@@ -412,7 +412,7 @@ You are playing the AI1_friend role. Key functions:
 
         # AI2 (Tutor) Role Definition  
         ai2_role_context = """**[SYSTEM: Role Definition]**
-You are playing the AI2_tutor role. Key functions:
+You are playing the AI1_Leo role. Key functions:
 - Act as an English tutor and learning partner
 - Naturally correct users' grammar mistakes and awkward expressions
 - Provide professional answers to technical questions
@@ -430,7 +430,7 @@ You are playing the AI2_tutor role. Key functions:
         logger.info("🤖🔗 AI2 (튜터) RAG 체인 생성 중...")
         self.rag_chain_ai2 = self._create_rag_chain(persona_ai2, embeddings, ai2_role_context)
 
-        orchestrator_template = """You are an orchestrator that controls the flow of conversation. Based on the conversation history and user input below, decide who should speak next. You must respond with only "AI1_friend" or "AI2_tutor".\n\n- "AI1_friend" is a friendly conversation partner.\n- "AI2_tutor" is a smart friend who corrects grammar and expressions.\n\nConversation History:\n{history}\n\nUser: {question}\nNext speaker:"""
+        orchestrator_template = """You are an orchestrator that controls the flow of conversation. Based on the conversation history and user input below, decide who should speak next. You must respond with only "AI1_Mia" or "AI1_Leo".\n\n- "AI1_Mia" is a friendly conversation partner.\n- "AI1_Leo" is a smart friend who corrects grammar and expressions.\n\nConversation History:\n{history}\n\nUser: {question}\nNext speaker:"""
         orchestrator_prompt = ChatPromptTemplate.from_template(orchestrator_template)
         self.orchestrator_chain = orchestrator_prompt | self.llm.client | StrOutputParser()
         
@@ -481,10 +481,10 @@ You are playing the AI2_tutor role. Key functions:
         try:
             if is_ai_turn:
                 # AI 간 대화: 마지막 발언자를 기반으로 다음 발언자 결정
-                if self.last_ai_speaker == "AI1_friend":
-                    next_speaker = "AI2_tutor"
+                if self.last_ai_speaker == "AI1_Mia":
+                    next_speaker = "AI1_Leo"
                 else:
-                    next_speaker = "AI1_friend"
+                    next_speaker = "AI1_Mia"
                 logger.info(f"🤖🗣️ AI 턴 전환: {self.last_ai_speaker} -> {next_speaker}")
             else:
                 # 사용자 턴: 오케스트레이터 호출
@@ -502,27 +502,27 @@ You are playing the AI2_tutor role. Key functions:
                 return
 
             # 결정된 스피커에 따라 체인과 목소리 선택
-            if "AI1_friend" in next_speaker:
+            if "AI1_Mia" in next_speaker:
                 active_chain = self.rag_chain_ai1
                 voice_id = "9BWtsMINqrJLrRacOk9x" # Aria
                 # voice_id = "uyVNoMrnUku1dZyVEXwD" # Anna kim (테스트용 한국어 모델)
                 voice = "mia"   # 오르페우스 모델용
-                self.running_generation.speaker_role = "AI1_friend"
-                self.last_ai_speaker = "AI1_friend"
-            elif "AI2_tutor" in next_speaker:
+                self.running_generation.speaker_role = "AI1_Mia"
+                self.last_ai_speaker = "AI1_Mia"
+            elif "AI1_Leo" in next_speaker:
                 active_chain = self.rag_chain_ai2
                 voice_id = "JBFqnCBsd6RMkjVDRZzb" # George
                 # voice_id = "jB1Cifc2UQbq1gR3wnb0" # Bin (테스트용 한국어 모델)
                 voice = "leo"   # 오르페우스 모델용
-                self.running_generation.speaker_role = "AI2_tutor"
-                self.last_ai_speaker = "AI2_tutor"
+                self.running_generation.speaker_role = "AI1_Leo"
+                self.last_ai_speaker = "AI1_Leo"
             else:
                 logger.warning(f"🤖❓ 알 수 없는 스피커 결정: {next_speaker}. 기본값(AI1) 사용.")
                 active_chain = self.rag_chain_ai1
                 voice_id = "JBFqnCBsd6RMkjVDRZzb" # George
                 voice = "mia"   # 오르페우스 모델용
-                self.running_generation.speaker_role = "AI1_friend"
-                self.last_ai_speaker = "AI1_friend"
+                self.running_generation.speaker_role = "AI1_Mia"
+                self.last_ai_speaker = "AI1_Mia"
 
             if self.tts_engine == "elabs":
                 self.audio.set_voice(voice_id)
@@ -532,7 +532,7 @@ You are playing the AI2_tutor role. Key functions:
                 logger.info(f"🎤🔊 ElevenLabs 목소리 변경: {voice}")
             else:
                 # Coqui와 같은 다른 엔진을 위한 기존 로직
-                voice_path = "./voices/coqui_Daisy Studious.wav" if "AI1_friend" in next_speaker else "./voices/thsama.wav"
+                voice_path = "./voices/coqui_Daisy Studious.wav" if "AI1_Mia" in next_speaker else "./voices/thsama.wav"
                 self.audio.set_voice(voice_path)
                 logger.info(f"🎤🔊 목소리 변경: {voice_path}")
 
