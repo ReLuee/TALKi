@@ -232,10 +232,15 @@ public class WebSocketClient : MonoBehaviour
         {
             int toCopy = Mathf.Min(audioSamples.Length - read, batchSamples - batchOffset);
             
-            // Convert float samples to 16-bit PCM and add to batch
+            // Convert float samples to 16-bit PCM and add to batch (match web client logic)
             for (int i = 0; i < toCopy; i++)
             {
-                short sample = (short)(audioSamples[read + i] * 32767f * audioGain);
+                float s = audioSamples[read + i] * audioGain;
+                // Clamp the sample to [-1, 1] range
+                s = s < -1f ? -1f : s > 1f ? 1f : s;
+                // Convert to 16-bit PCM using web client's asymmetric range
+                short sample = s < 0 ? (short)(s * 0x8000) : (short)(s * 0x7FFF);
+                
                 int bufferIndex = HEADER_BYTES + (batchOffset + i) * 2;
                 batchBuffer[bufferIndex] = (byte)(sample & 0xFF);
                 batchBuffer[bufferIndex + 1] = (byte)((sample >> 8) & 0xFF);
@@ -255,19 +260,19 @@ public class WebSocketClient : MonoBehaviour
     {
         if (!isConnected) return;
         
-        // Set timestamp (first 4 bytes)
+        // Set timestamp (first 4 bytes) - Big-endian format to match web client
         uint timestamp = (uint)(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() & 0xFFFFFFFF);
-        batchBuffer[0] = (byte)(timestamp & 0xFF);
-        batchBuffer[1] = (byte)((timestamp >> 8) & 0xFF);
-        batchBuffer[2] = (byte)((timestamp >> 16) & 0xFF);
-        batchBuffer[3] = (byte)((timestamp >> 24) & 0xFF);
+        batchBuffer[0] = (byte)((timestamp >> 24) & 0xFF);
+        batchBuffer[1] = (byte)((timestamp >> 16) & 0xFF);
+        batchBuffer[2] = (byte)((timestamp >> 8) & 0xFF);
+        batchBuffer[3] = (byte)(timestamp & 0xFF);
         
-        // Set flags (next 4 bytes)
+        // Set flags (next 4 bytes) - Big-endian format to match web client
         uint flags = isTTSPlaying ? 1u : 0u;
-        batchBuffer[4] = (byte)(flags & 0xFF);
-        batchBuffer[5] = (byte)((flags >> 8) & 0xFF);
-        batchBuffer[6] = (byte)((flags >> 16) & 0xFF);
-        batchBuffer[7] = (byte)((flags >> 24) & 0xFF);
+        batchBuffer[4] = (byte)((flags >> 24) & 0xFF);
+        batchBuffer[5] = (byte)((flags >> 16) & 0xFF);
+        batchBuffer[6] = (byte)((flags >> 8) & 0xFF);
+        batchBuffer[7] = (byte)(flags & 0xFF);
         
         webSocket.Send(batchBuffer);
         batchOffset = 0;

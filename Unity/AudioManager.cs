@@ -7,7 +7,7 @@ using UnityEngine;
 public class AudioManager : MonoBehaviour
 {
     [Header("Audio Settings")]
-    public int sampleRate = 48000;
+    public int sampleRate = 24000; // Match web client's ideal sample rate
     public int microphoneBufferLength = 1; // seconds
     public bool enableMicrophone = true;
     
@@ -88,7 +88,7 @@ public class AudioManager : MonoBehaviour
             microphoneClip = Microphone.Start(selectedMicrophone, true, microphoneBufferLength, sampleRate);
             isRecording = true;
             lastMicPosition = 0;
-            Debug.Log("Microphone recording started");
+            Debug.Log($"Microphone recording started at {sampleRate}Hz");
         }
         catch (Exception e)
         {
