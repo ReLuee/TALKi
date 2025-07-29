@@ -13,9 +13,12 @@ public class WebSocketClient : MonoBehaviour
     public bool useSSL = false;
     
     [Header("Audio Settings")]
-    public int sampleRate = 48000;
+    public int sampleRate = 48000; // Will be set to system sample rate on init
     public int batchSamples = 2048;
     public float audioGain = 1.0f;
+    
+    [Header("Debug Info")]
+    public bool showDebugInfo = false;
     
     [Header("Events")]
     public UnityEngine.Events.UnityEvent OnConnected;
@@ -41,6 +44,10 @@ public class WebSocketClient : MonoBehaviour
     
     void Start()
     {
+        // Sync sample rate with system settings
+        sampleRate = AudioSettings.outputSampleRate;
+        Debug.Log($"WebSocketClient using sample rate: {sampleRate}Hz");
+        
         InitializeAudioBuffer();
     }
     
@@ -178,6 +185,12 @@ public class WebSocketClient : MonoBehaviour
         {
             byte[] audioBytes = Convert.FromBase64String(base64Audio);
             float[] audioSamples = ConvertBytesToFloat(audioBytes);
+            
+            if (showDebugInfo)
+            {
+                Debug.Log($"Received TTS chunk: {audioBytes.Length} bytes, {audioSamples.Length} samples");
+            }
+            
             OnTTSAudioReceived?.Invoke(audioSamples);
             
             if (!isTTSPlaying)
@@ -185,6 +198,10 @@ public class WebSocketClient : MonoBehaviour
                 isTTSPlaying = true;
                 waitingForTTSComplete = true;
                 SendMessage(new { type = "tts_start" });
+                if (showDebugInfo)
+                {
+                    Debug.Log("TTS playback started from WebSocket");
+                }
             }
         }
         catch (Exception e)
@@ -195,6 +212,11 @@ public class WebSocketClient : MonoBehaviour
     
     void HandleTTSStop()
     {
+        if (showDebugInfo)
+        {
+            Debug.Log("Handling TTS stop from server");
+        }
+        
         isTTSPlaying = false;
         waitingForTTSComplete = false;
         SendMessage(new { type = "tts_stop" });
@@ -202,23 +224,41 @@ public class WebSocketClient : MonoBehaviour
     
     void HandleTTSComplete()
     {
+        if (showDebugInfo)
+        {
+            Debug.Log($"TTS complete signal received. Waiting: {waitingForTTSComplete}, Playing: {isTTSPlaying}");
+        }
+        
         if (waitingForTTSComplete)
         {
             waitingForTTSComplete = false;
             if (!isTTSPlaying)
             {
                 SendMessage(new { type = "tts_stop" });
+                if (showDebugInfo)
+                {
+                    Debug.Log("Sent tts_stop after completion signal");
+                }
             }
         }
     }
     
     float[] ConvertBytesToFloat(byte[] bytes)
     {
+        if (bytes.Length % 2 != 0)
+        {
+            Debug.LogWarning($"Invalid audio data length: {bytes.Length} bytes (not divisible by 2)");
+            // Trim to even length
+            byte[] trimmedBytes = new byte[bytes.Length - 1];
+            Array.Copy(bytes, trimmedBytes, trimmedBytes.Length);
+            bytes = trimmedBytes;
+        }
+        
         float[] samples = new float[bytes.Length / 2];
         for (int i = 0; i < samples.Length; i++)
         {
             short sample = BitConverter.ToInt16(bytes, i * 2);
-            samples[i] = sample / 32768f; // Convert to -1.0 to 1.0 range
+            samples[i] = sample / 32768f; // Convert to -1.0 to 1.0 range (matches web worklet)
         }
         return samples;
     }
@@ -335,17 +375,31 @@ public class WebSocketClient : MonoBehaviour
             isTTSPlaying = true;
             waitingForTTSComplete = true;
             SendMessage(new { type = "tts_start" });
+            
+            if (showDebugInfo)
+            {
+                Debug.Log("TTS playback started event from AudioManager");
+            }
         }
     }
     
     public void OnTTSPlaybackStopped()
     {
+        if (showDebugInfo)
+        {
+            Debug.Log($"TTS playback stopped event. Was playing: {isTTSPlaying}, Waiting for complete: {waitingForTTSComplete}");
+        }
+        
         if (isTTSPlaying)
         {
             isTTSPlaying = false;
             if (!waitingForTTSComplete)
             {
                 SendMessage(new { type = "tts_stop" });
+                if (showDebugInfo)
+                {
+                    Debug.Log("Sent tts_stop from playback stopped event");
+                }
             }
         }
     }

@@ -189,4 +189,4 @@ EXPOSE 8000
 # Set the entrypoint script - This runs as root
 ENTRYPOINT ["/entrypoint.sh"]
 # Define the default command - This is passed as "$@" to the entrypoint script
-CMD ["python", "-m", "uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000", "--ssl-keyfile", "1-key.pem", "--ssl-certfile", "1.pem", "--reload"]
+CMD ["python", "-m", "uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

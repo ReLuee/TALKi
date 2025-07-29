@@ -7,7 +7,7 @@ using UnityEngine;
 public class AudioManager : MonoBehaviour
 {
     [Header("Audio Settings")]
-    public int sampleRate = 24000; // Match web client's ideal sample rate
+    public int sampleRate = 48000; // Use system sample rate for better compatibility
     public int microphoneBufferLength = 1; // seconds
     public bool enableMicrophone = true;
     
@@ -32,9 +32,12 @@ public class AudioManager : MonoBehaviour
     private bool isTTSPlaying = false;
     
     // Audio buffer management
-    private const int TTS_BUFFER_SIZE = 48000 * 10; // 10 seconds buffer
+    private const int TTS_BUFFER_SIZE = 48000 * 20; // 20 seconds buffer for smoother playback
     private float[] ttsBuffer;
     private int ttsBufferPosition = 0;
+    private bool hasReceivedAnyData = false;
+    private float silenceTimer = 0f;
+    private const float MAX_SILENCE_TIME = 2.0f; // Max silence before stopping
     
     void Start()
     {
@@ -49,10 +52,14 @@ public class AudioManager : MonoBehaviour
     
     void InitializeAudio()
     {
+        // Use system's preferred sample rate for better compatibility
+        sampleRate = AudioSettings.outputSampleRate;
+        Debug.Log($"Using system sample rate: {sampleRate}Hz");
+        
         // Initialize TTS buffer
         ttsBuffer = new float[TTS_BUFFER_SIZE];
         
-        // Create TTS playback clip
+        // Create TTS playback clip with system sample rate
         ttsClip = AudioClip.Create("TTSPlayback", TTS_BUFFER_SIZE, 1, sampleRate, true, OnTTSAudioRead);
         audioSource.clip = ttsClip;
         audioSource.volume = ttsVolume;
@@ -188,6 +195,8 @@ public class AudioManager : MonoBehaviour
         lock (ttsAudioQueue)
         {
             ttsAudioQueue.Enqueue(audioSamples);
+            hasReceivedAnyData = true;
+            silenceTimer = 0f; // Reset silence timer when new data arrives
         }
     }
     
@@ -210,11 +219,20 @@ public class AudioManager : MonoBehaviour
             StartTTSPlayback();
         }
         
-        // Add samples to circular buffer
+        // Add samples to circular buffer with overflow protection
         for (int i = 0; i < samples.Length; i++)
         {
+            // Check for buffer overflow
+            int nextPos = (ttsBufferPosition + 1) % ttsBuffer.Length;
+            if (nextPos == ttsWritePosition)
+            {
+                // Buffer is full - skip this sample to prevent overrun
+                Debug.LogWarning("TTS buffer overflow - dropping samples");
+                break;
+            }
+            
             ttsBuffer[ttsBufferPosition] = samples[i] * ttsVolume;
-            ttsBufferPosition = (ttsBufferPosition + 1) % ttsBuffer.Length;
+            ttsBufferPosition = nextPos;
         }
     }
     
@@ -240,6 +258,8 @@ public class AudioManager : MonoBehaviour
             Array.Clear(ttsBuffer, 0, ttsBuffer.Length);
             ttsBufferPosition = 0;
             ttsWritePosition = 0;
+            hasReceivedAnyData = false;
+            silenceTimer = 0f;
             
             // Clear queue
             lock (ttsAudioQueue)
@@ -252,6 +272,15 @@ public class AudioManager : MonoBehaviour
         }
     }
     
+    private System.Collections.IEnumerator DelayedStopTTS()
+    {
+        yield return new WaitForSeconds(0.1f); // Small delay to avoid race conditions
+        if (ttsAudioQueue.Count == 0 && CalculateAvailableData() == 0)
+        {
+            StopTTSPlayback();
+        }
+    }
+    
     void OnTTSAudioRead(float[] data)
     {
         if (!isTTSPlaying)
@@ -261,24 +290,49 @@ public class AudioManager : MonoBehaviour
             return;
         }
         
-        // Check if we have enough data in buffer
         int availableData = CalculateAvailableData();
-        if (availableData < data.Length / 2) // Stop if buffer is running low
-        {
-            Array.Clear(data, 0, data.Length);
-            if (ttsAudioQueue.Count == 0) // No more data coming
-            {
-                StopTTSPlayback();
-            }
-            return;
-        }
         
-        // Copy data from circular buffer
-        for (int i = 0; i < data.Length; i++)
+        // More lenient buffer underrun handling - only require minimal data
+        if (availableData >= data.Length)
         {
-            data[i] = ttsBuffer[ttsWritePosition];
-            ttsBuffer[ttsWritePosition] = 0; // Clear read data
-            ttsWritePosition = (ttsWritePosition + 1) % ttsBuffer.Length;
+            // Enough data available - normal playback
+            for (int i = 0; i < data.Length; i++)
+            {
+                data[i] = ttsBuffer[ttsWritePosition];
+                ttsBuffer[ttsWritePosition] = 0; // Clear read data
+                ttsWritePosition = (ttsWritePosition + 1) % ttsBuffer.Length;
+            }
+            silenceTimer = 0f;
+        }
+        else if (availableData > 0)
+        {
+            // Some data available - play what we have and pad with silence
+            int i = 0;
+            for (; i < availableData && i < data.Length; i++)
+            {
+                data[i] = ttsBuffer[ttsWritePosition];
+                ttsBuffer[ttsWritePosition] = 0;
+                ttsWritePosition = (ttsWritePosition + 1) % ttsBuffer.Length;
+            }
+            // Fill remaining with silence
+            for (; i < data.Length; i++)
+            {
+                data[i] = 0f;
+            }
+            silenceTimer += (float)data.Length / sampleRate;
+        }
+        else
+        {
+            // No data available - output silence and track time
+            Array.Clear(data, 0, data.Length);
+            silenceTimer += (float)data.Length / sampleRate;
+            
+            // Stop only after extended silence and no more data expected
+            if (silenceTimer > MAX_SILENCE_TIME && ttsAudioQueue.Count == 0 && hasReceivedAnyData)
+            {
+                // Delay stop to avoid race conditions
+                StartCoroutine(DelayedStopTTS());
+            }
         }
     }
     
