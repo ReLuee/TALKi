@@ -120,7 +120,7 @@ async def lifespan(app: FastAPI):
     logger.info("🖥️▶️ 서버 시작 중")
     
     # 백엔드 클라이언트 초기화 (Docker 환경에서 호스트 접근)
-    backend_url = os.getenv("BACKEND_URL", "http://host.docker.internal:8080")
+    backend_url = os.getenv("BACKEND_URL", "http://192.168.0.31:8080")
     backend_client = initialize_backend_client(backend_url=backend_url)
     app.state.backend_client = backend_client
     

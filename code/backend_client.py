@@ -14,7 +14,7 @@ class BackendClient:
     대화 내용과 발화자 정보를 데이터베이스에 저장합니다.
     """
     
-    def __init__(self, backend_url: str = "http://localhost:8080", session_id: str = "default_session", branch_id: str = "main_branch"):
+    def __init__(self, backend_url: str = "http://192.168.0.31:8080", session_id: str = "default_session", branch_id: str = "main_branch"):
         """
         BackendClient 초기화
         
@@ -326,7 +326,7 @@ def get_backend_client() -> BackendClient:
         _backend_client = BackendClient()
     return _backend_client
 
-def initialize_backend_client(backend_url: str = "http://localhost:8080", 
+def initialize_backend_client(backend_url: str = "http://192.168.0.31:8080", 
                             session_id: str = "default_session", 
                             branch_id: str = "main_branch") -> BackendClient:
     """
