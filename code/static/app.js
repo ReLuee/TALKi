@@ -62,8 +62,8 @@ let waitingForTTSComplete = false;
 let chatHistory = [];
 let typingUser = "";
 let typingAssistant = {
-    "AI1_Mia": "",
-    "AI1_Leo": "",
+    "AI1": "",
+    "AI2": "",
     "assistant": "" // Fallback
 };
 
@@ -244,9 +244,9 @@ function renderMessages() {
         
         if (msg.role === 'user') {
             speakerName.textContent = 'You';
-        } else if (msg.role === 'AI1_Mia') {
+        } else if (msg.role === 'AI1') {
             speakerName.textContent = 'Mia';
-        } else if (msg.role === 'AI1_Leo') {
+        } else if (msg.role === 'AI2') {
             speakerName.textContent = 'Leo';
         } else {
             speakerName.textContent = 'Assistant';
@@ -285,9 +285,9 @@ function renderMessages() {
 
             const speakerName = document.createElement("div");
             speakerName.className = "speaker-name";
-            if (role === 'AI1_Mia') {
+            if (role === 'AI1') {
                 speakerName.textContent = 'Mia';
-            } else if (role === 'AI1_Leo') {
+            } else if (role === 'AI2') {
                 speakerName.textContent = 'Leo';
             } else {
                 speakerName.textContent = 'Assistant';

@@ -10,6 +10,10 @@ uvicorn
 # configuration
 python-dotenv
 
+# HTTP client dependencies
+requests
+aiohttp
+
 # llm providers
 ollama
 openai

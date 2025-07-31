@@ -238,8 +238,8 @@ public class VoiceChatUI : MonoBehaviour
     {
         switch (role)
         {
-            case "AI1_Mia": return "Mia";
-            case "AI1_Leo": return "Leo";
+            case "AI1": return "Mia";
+            case "AI2": return "Leo";
             case "assistant": return "Assistant";
             default: return role;
         }

@@ -24,6 +24,9 @@ services:
       - LANGSMITH_ENDPOINT="https://api.smith.langchain.com"
       - LANGSMITH_API_KEY=${LANGSMITH_API_KEY}
       - LANGSMITH_PROJECT="mtvs-pr-talki"
+      
+      # Backend connection settings
+      - BACKEND_URL=http://192.168.0.31:8080
 
     volumes:
        # Optional: Mount code for live development

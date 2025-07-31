@@ -215,3 +215,4 @@ temp.py
 *.ipynb
 squashfs-root/
 *.wav
+app_logs.txt

@@ -67,6 +67,7 @@ if sys.platform == "win32":
 from audio_in import AudioInputProcessor
 from speech_pipeline_manager import SpeechPipelineManager
 from colors import Colors
+from backend_client import initialize_backend_client, get_backend_client, cleanup_backend_client
 
 LANGUAGE = "en"
 # TTS_FINAL_TIMEOUT = 0.5 # 안정성을 위해 1.0이 필요한지 불확실
@@ -117,6 +118,23 @@ async def lifespan(app: FastAPI):
         app: FastAPI 애플리케이션 인스턴스.
     """
     logger.info("🖥️▶️ 서버 시작 중")
+    
+    # 백엔드 클라이언트 초기화 (Docker 환경에서 호스트 접근)
+    backend_url = os.getenv("BACKEND_URL", "http://host.docker.internal:8080")
+    backend_client = initialize_backend_client(backend_url=backend_url)
+    app.state.backend_client = backend_client
+    
+    # 백엔드 연결 테스트 및 세션 초기화
+    if backend_client.test_connection():
+        logger.info("📡✅ 백엔드 서버 연결 확인됨")
+        # 세션과 브랜치 초기화
+        if backend_client.initialize_session():
+            logger.info("📡✅ 백엔드 세션 및 브랜치 초기화 완료")
+        else:
+            logger.warning("📡⚠️ 백엔드 세션 초기화 실패 - 대화 저장이 제한될 수 있습니다")
+    else:
+        logger.warning("📡⚠️ 백엔드 서버 연결 실패 - 대화 저장 기능이 작동하지 않을 수 있습니다")
+    
     # 전역 컴포넌트 초기화, 연결별 상태 아님
     app.state.SpeechPipelineManager = SpeechPipelineManager(
         tts_engine=TTS_START_ENGINE,
@@ -140,6 +158,9 @@ async def lifespan(app: FastAPI):
     logger.info("🖥️⏹️ 서버 종료 중")
     app.state.AudioInputProcessor.shutdown()
     app.state.SpeechPipelineManager.shutdown()
+    
+    # 백엔드 클라이언트 정리
+    cleanup_backend_client()
 
 
 # --------------------------------------------------------------------
@@ -817,6 +838,20 @@ class TranscriptionCallbacks:
         logger.info(f"🖥️🧠 기록에 사용자 요청 추가 중: '{user_request_content}'")
         # 전역 관리자 상태 접근
         self.app.state.SpeechPipelineManager.history.append({"role": "user", "content": user_request_content})
+        
+        # 백엔드에 사용자 메시지 전송 (동기 방식으로 처리)
+        if hasattr(self.app.state, 'backend_client') and user_request_content.strip():
+            logger.info(f"📡🔄 사용자 메시지 백엔드 전송 시도: '{user_request_content[:30]}...'")
+            try:
+                # 동기 방식으로 백엔드에 전송
+                backend_client = self.app.state.backend_client
+                success = backend_client.send_user_message(user_request_content)
+                if success:
+                    logger.info(f"📡✅ 사용자 메시지 백엔드 전송 성공: '{user_request_content[:50]}{'...' if len(user_request_content) > 50 else ''}'")
+                else:
+                    logger.warning(f"📡⚠️ 사용자 메시지 백엔드 전송 실패: '{user_request_content[:50]}{'...' if len(user_request_content) > 50 else ''}'")
+            except Exception as e:
+                logger.warning(f"📡⚠️ 사용자 메시지 백엔드 전송 중 오류: {e}")
 
     def on_final(self, txt: str):
         """
@@ -986,6 +1021,20 @@ class TranscriptionCallbacks:
                 self.app.state.SpeechPipelineManager.history.append({"role": speaker_role, "content": cleaned_answer})
                 self.final_assistant_answer_sent = True
                 self.final_assistant_answer = cleaned_answer # 전송된 답변 저장
+                
+                # 백엔드에 AI 메시지 전송 (동기 방식으로 처리)
+                if hasattr(self.app.state, 'backend_client'):
+                    logger.info(f"📡🔄 AI 메시지 백엔드 전송 시도 ({speaker_role}): '{cleaned_answer[:30]}...'")
+                    try:
+                        # 동기 방식으로 백엔드에 전송
+                        backend_client = self.app.state.backend_client
+                        success = backend_client.send_assistant_message(cleaned_answer, speaker_role)
+                        if success:
+                            logger.info(f"📡✅ AI 메시지 백엔드 전송 성공 ({speaker_role}): '{cleaned_answer[:50]}{'...' if len(cleaned_answer) > 50 else ''}'")
+                        else:
+                            logger.warning(f"📡⚠️ AI 메시지 백엔드 전송 실패 ({speaker_role}): '{cleaned_answer[:50]}{'...' if len(cleaned_answer) > 50 else ''}'")
+                    except Exception as e:
+                        logger.warning(f"📡⚠️ AI 메시지 백엔드 전송 중 오류: {e}")
             else:
                 logger.warning(f"🖥️⚠️ {Colors.YELLOW}최종 어시스턴트 답변이 정리 후 비어 있습니다.{Colors.RESET}")
                 self.final_assistant_answer_sent = False # 전송됨으로 표시 안 함
@@ -996,6 +1045,7 @@ class TranscriptionCallbacks:
         
         # if self.app.state.SpeechPipelineManager.is_valid_gen():
         #     self.app.state.SpeechPipelineManager.running_generation.turn_finished_event.set()
+
 
 
 # --------------------------------------------------------------------
