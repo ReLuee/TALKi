@@ -532,7 +532,7 @@ You are playing the AI2 role. Key functions:
                 logger.info(f"🎤🔊 ElevenLabs 목소리 변경: {voice}")
             else:
                 # Coqui와 같은 다른 엔진을 위한 기존 로직
-                voice_path = "./voices/coqui_Daisy Studious.wav" if "AI1" in next_speaker else "./voices/thsama.wav"
+                voice_path = "./voices/coqui_Daisy Studious.wav" if "AI1" in next_speaker else "./voices/coqui_Marcos Rudaski.wav"
                 self.audio.set_voice(voice_path)
                 logger.info(f"🎤🔊 목소리 변경: {voice_path}")
 
