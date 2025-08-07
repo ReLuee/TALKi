@@ -291,7 +291,7 @@ class TranscriptionProcessor:
                 # 장시간 시스템 유휴 상태 감지 로직
                 if self.prolonged_silence_start_time != 0.0:
                     time_since_idle = time.time() - self.prolonged_silence_start_time
-                    if time_since_idle > 5.0 and not self.prolonged_silence_triggered:
+                    if time_since_idle > 2.5 and not self.prolonged_silence_triggered:
                         logger.info("👂💤 5초 이상 시스템 유휴 상태 감지됨. AI 대화 시작.")
                         self.prolonged_silence_triggered = True
                         if self.on_prolonged_silence_callback:

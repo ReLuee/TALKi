@@ -216,3 +216,5 @@ temp.py
 squashfs-root/
 *.wav
 app_logs.txt
+250806_logs.txt
+Unity_test/
