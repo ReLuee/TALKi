@@ -538,7 +538,13 @@ You are playing the AI2 role. Key functions:
 
             formatted_history = "\n".join([f"{h['role']}: {h['content']}" for h in self.history])
             input_data = {"question": txt, "history": formatted_history}
-            self.running_generation.llm_generator = active_chain.stream(input_data)
+            
+            # running_generation이 None이 아닌지 확인
+            if self.running_generation is not None:
+                self.running_generation.llm_generator = active_chain.stream(input_data)
+            else:
+                logger.warning(f"🗣️🧠⚠️ [Gen {new_gen_id}] running_generation이 None이므로 LLM 생성을 건너뜁니다.")
+                return
             
             logger.info(f"🗣️🧠✔️ [Gen {new_gen_id}] LLM 생성기 생성됨. 생성기 준비 이벤트 설정 중.")
             self.generator_ready_event.set()
